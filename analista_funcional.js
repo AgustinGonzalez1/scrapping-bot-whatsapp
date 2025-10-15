@@ -9,7 +9,7 @@ async function sendUrlPost(url) {
     const response = await axios.post(
       `${process.env.API_URL}/message/sendText/${process.env.INSTANCE_NAME}`,
       {
-        number: process.env.NUMBER1,
+        number: process.env.NUMBER2,
         text: `Nuevo post encontrado: ${url}`,
       },
       {
@@ -31,15 +31,13 @@ function timeout(ms) {
 }
 
 let savedPosts = [];
-export async function checkWhatsAppWeb(page) {
+export async function checkAnalista(page) {
   // Cargar posts guardados
   await storage.loadPosts();
-
-
-    await page.goto(
-      "https://www.linkedin.com/search/results/content/?keywords=desarrollador%20frontend&origin=FACETED_SEARCH&sid=.Wd&sortBy=%22date_posted%22"
-    );
-
+  
+  await page.goto(
+    "https://www.linkedin.com/search/results/content/?keywords=analista%20funcional&origin=GLOBAL_SEARCH_HEADER&sid=Y.y&sortBy=%22date_posted%22"
+  );
 
   await page.evaluate(() => window.scrollTo(0, 500));
   await timeout(10000);
@@ -50,16 +48,20 @@ export async function checkWhatsAppWeb(page) {
     const text = await post.evaluate((el) => el.innerText.toLowerCase());
 
     if (
-      (text.includes("ssr") || text.includes("desarrollador")) &&
-      (text.includes("frontend") ||
-        text.includes("front-end") ||
-        text.includes("front end"))
+      
+      (text.includes("analista funcional") ||
+        text.includes("help desk") ||
+        text.includes("analista de sistemas") ||
+        text.includes("analista de negocios") ||
+        text.includes("business analyst")) ||
+        text.includes("system analyst") ||
+        text.includes("functional analyst")
     ) {
       const article = await post.$("div[role='article']");
       if (article) {
         const urn = await article.evaluate((el) => el.getAttribute("data-urn"));
         if (urn && urn.includes("activity:")) {
-          const isNew = await storage.addPost('desarrollador', urn);
+          const isNew = await storage.addPost('analista', urn);
           if (isNew) {
             const postUrl = `https://www.linkedin.com/feed/update/${urn}`;
             sendUrlPost(postUrl);
@@ -70,6 +72,6 @@ export async function checkWhatsAppWeb(page) {
     }
   }
 
-  const totalPosts = await storage.getPosts('desarrollador');
+  const totalPosts = await storage.getPosts('analista');
   console.log(`Revisión completa. Posts guardados: ${totalPosts.length}`);
 }
