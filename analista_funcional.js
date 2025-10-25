@@ -30,7 +30,6 @@ function timeout(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-let savedPosts = [];
 export async function checkAnalista(page) {
   // Cargar posts guardados
   await storage.loadPosts();
