@@ -10,7 +10,7 @@ async function sendUrlPost(url) {
       `${process.env.API_URL}/message/sendText/${process.env.INSTANCE_NAME}`,
       {
         number: process.env.NUMBER1,
-        text: `Nuevo post encontrado: ${url}`,
+        text: `Nuevo post de React encontrado: ${url}`,
       },
       {
         headers: {
@@ -31,12 +31,12 @@ function timeout(ms) {
 }
 
 let savedPosts = [];
-export async function checkWhatsAppWeb(page) {
+export async function checkReactDeveloper(page) {
   // Cargar posts guardados
   await storage.loadPosts();
 
   await page.goto(
-    "https://www.linkedin.com/search/results/content/?keywords=desarrollador%20frontend&origin=FACETED_SEARCH&sid=.Wd&sortBy=%22date_posted%22"
+    "https://www.linkedin.com/search/results/content/?keywords=react%20%26%26%20remoto&origin=FACETED_SEARCH&searchId=1fd37e06-0acb-4192-8568-ae41f3080392&sid=05v&sortBy=%22date_posted%22"
   );
 
   await page.evaluate(() => window.scrollTo(0, 500));
@@ -47,16 +47,22 @@ export async function checkWhatsAppWeb(page) {
   for (const [i, post] of posts.entries()) {
     const text = await post.evaluate((el) => el.innerText.toLowerCase());
 
+    // Omitir publicaciones que contengan "desenvolvedor"
+    if (text.includes("desenvolvedor")) {
+      continue;
+    }
+
     if (!text.includes("desenvolvedor")) {
       const article = await post.$("div[role='article']");
       if (article) {
         const urn = await article.evaluate((el) => el.getAttribute("data-urn"));
         if (urn && urn.includes("activity:")) {
+          // Guardar en el mismo array de desarrollador
           const isNew = await storage.addPost("desarrollador", urn);
           if (isNew) {
             const postUrl = `https://www.linkedin.com/feed/update/${urn}`;
             sendUrlPost(postUrl);
-            console.log(`Nuevo post encontrado: ${postUrl}`);
+            console.log(`Nuevo post de React encontrado: ${postUrl}`);
           }
         }
       }
@@ -64,5 +70,7 @@ export async function checkWhatsAppWeb(page) {
   }
 
   const totalPosts = await storage.getPosts("desarrollador");
-  console.log(`Revisión completa. Posts guardados: ${totalPosts.length}`);
+  console.log(
+    `Revisión de React completa. Posts guardados en desarrollador: ${totalPosts.length}`
+  );
 }

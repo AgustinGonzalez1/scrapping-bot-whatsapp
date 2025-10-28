@@ -33,7 +33,7 @@ function timeout(ms) {
 export async function checkAnalista(page) {
   // Cargar posts guardados
   await storage.loadPosts();
-  
+
   await page.goto(
     "https://www.linkedin.com/search/results/content/?keywords=analista%20funcional&origin=GLOBAL_SEARCH_HEADER&sid=Y.y&sortBy=%22date_posted%22"
   );
@@ -46,31 +46,20 @@ export async function checkAnalista(page) {
   for (const [i, post] of posts.entries()) {
     const text = await post.evaluate((el) => el.innerText.toLowerCase());
 
-    if (
-      
-      (text.includes("analista funcional") ||
-        text.includes("help desk") ||
-        text.includes("analista de sistemas") ||
-        text.includes("analista de negocios") ||
-        text.includes("business analyst")) ||
-        text.includes("system analyst") ||
-        text.includes("functional analyst")
-    ) {
-      const article = await post.$("div[role='article']");
-      if (article) {
-        const urn = await article.evaluate((el) => el.getAttribute("data-urn"));
-        if (urn && urn.includes("activity:")) {
-          const isNew = await storage.addPost('analista', urn);
-          if (isNew) {
-            const postUrl = `https://www.linkedin.com/feed/update/${urn}`;
-            sendUrlPost(postUrl);
-            console.log(`Nuevo post encontrado: ${postUrl}`);
-          }
+    const article = await post.$("div[role='article']");
+    if (article) {
+      const urn = await article.evaluate((el) => el.getAttribute("data-urn"));
+      if (urn && urn.includes("activity:")) {
+        const isNew = await storage.addPost("analista", urn);
+        if (isNew) {
+          const postUrl = `https://www.linkedin.com/feed/update/${urn}`;
+          sendUrlPost(postUrl);
+          console.log(`Nuevo post encontrado: ${postUrl}`);
         }
       }
     }
   }
 
-  const totalPosts = await storage.getPosts('analista');
+  const totalPosts = await storage.getPosts("analista");
   console.log(`Revisión completa. Posts guardados: ${totalPosts.length}`);
 }
