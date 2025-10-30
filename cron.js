@@ -6,8 +6,11 @@ import {
   closeBrowser,
   getPage,
   getBrowser,
+  saveCookies,
 } from "./page.config.js";
 import { configDotenv } from "dotenv";
+import fs from "fs/promises";
+import path from "path";
 import { checkAnalista } from "./analista_funcional.js";
 
 configDotenv();
@@ -31,6 +34,30 @@ function timeout(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function saveDebugArtifacts(page, tag) {
+  try {
+    const debugDir = path.join(process.cwd(), "debug");
+    await fs.mkdir(debugDir, { recursive: true });
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const screenshotPath = path.join(debugDir, `${tag}-${timestamp}.png`);
+    const htmlPath = path.join(debugDir, `${tag}-${timestamp}.html`);
+    try {
+      await page.screenshot({ path: screenshotPath, fullPage: true });
+    } catch (e) {
+      // ignore
+    }
+    try {
+      const html = await page.content();
+      await fs.writeFile(htmlPath, html, "utf8");
+    } catch (e) {
+      // ignore
+    }
+    console.log("Debug artifacts saved:", screenshotPath, htmlPath);
+  } catch (e) {
+    console.error("Error saving debug artifacts:", e.message);
+  }
+}
+
 const initializeSession = async () => {
   try {
     console.log("Inicializando sesión...");
@@ -43,26 +70,120 @@ const initializeSession = async () => {
       throw new Error("No se pudo crear la página");
     }
 
-    await page.goto(
-      "https://www.linkedin.com/search/results/content/?keywords=desarrollador%20frontend&origin=FACETED_SEARCH&sid=.Wd&sortBy=%22date_posted%22"
-    );
+    // Ir a la página principal de LinkedIn para verificar si ya hay sesión
+    const respFeed = await page.goto("https://www.linkedin.com/feed/", {
+      waitUntil: "networkidle2",
+      timeout: 30000,
+    });
 
-    const inputEmail = await page.waitForSelector("#username");
-    await inputEmail.type(process.env.EMAIL);
+    // Detectar rate limit 429
+    if (
+      respFeed &&
+      typeof respFeed.status === "function" &&
+      respFeed.status() === 429
+    ) {
+      await saveDebugArtifacts(page, "429_feed");
+      console.error("LinkedIn devolvió 429 en /feed - aplicando backoff");
+      try {
+        await closeBrowser();
+      } catch (e) {}
+      return false;
+    }
 
-    await timeout(1000);
+    // Si aparece el formulario de login, entonces no está logueado
+    const loginForm = await page.$("#username");
+    if (!loginForm) {
+      // Probablemente ya estamos logueados
+      isInitialized = true;
+      try {
+        await saveCookies();
+      } catch (e) {}
+      const inputPassword = await page.waitForSelector("#password", {
+        timeout: 15000,
+      });
+      await inputPassword.click({ clickCount: 3 });
+      await inputPassword.type(process.env.PASSWORD, { delay: 50 });
 
-    const inputPassword = await page.waitForSelector("#password");
-    await inputPassword.type(process.env.PASSWORD);
+      await timeout(1000);
 
-    await timeout(1000);
+      const btnLogin = await page.waitForSelector("button[type='submit']", {
+        timeout: 15000,
+      });
+      await btnLogin.click();
+      await timeout(1000);
+      console.log("Sesión detectada por cookie. Inicializado.");
+      return true;
+    }
 
-    const btnLogin = await page.waitForSelector(
-      "[aria-label='Iniciar sesión']"
-    );
+    // No hay cookie válida, proceder a login normal
+    const respLogin = await page.goto("https://www.linkedin.com/login", {
+      waitUntil: "networkidle2",
+      timeout: 30000,
+    });
+
+    // si LinkedIn responde 429 en /login también
+    if (
+      respLogin &&
+      typeof respLogin.status === "function" &&
+      respLogin.status() === 429
+    ) {
+      await saveDebugArtifacts(page, "429_login");
+      console.error("LinkedIn devolvió 429 en /login - aplicando backoff");
+      try {
+        await closeBrowser();
+      } catch (e) {}
+      return false;
+    }
+
+    const inputEmail = await page.waitForSelector("#username", {
+      timeout: 15000,
+    });
+    await inputEmail.click({ clickCount: 3 });
+    await inputEmail.type(process.env.EMAIL, { delay: 50 });
+
+    await timeout(500);
+    console.log("Email ingresado");
+
+    const inputPassword = await page.waitForSelector("#password", {
+      timeout: 15000,
+    });
+    await inputPassword.click({ clickCount: 3 });
+    await inputPassword.type(process.env.PASSWORD, { delay: 50 });
+
+    await timeout(500);
+
+    const btnLogin = await page.waitForSelector("button[type='submit']", {
+      timeout: 15000,
+    });
     await btnLogin.click();
 
-    await page.waitForNavigation();
+    // Esperar navegación o cambio en el DOM que indique login
+    try {
+      await page.waitForNavigation({ timeout: 15000 });
+    } catch (e) {
+      // ignore timeout, comprobaremos manualmente
+    }
+
+    // Verificar si seguimos en login (posible verificación extra) buscando el input
+    const stillLogin = await page.$("#username");
+    // Si seguimos en login o nos redirigieron a un checkpoint/captcha, guardar evidencia
+    const currUrl = page.url();
+    const isCheckpoint =
+      currUrl.includes("/checkpoint/") || currUrl.includes("/captcha");
+    if (stillLogin || isCheckpoint) {
+      await saveDebugArtifacts(
+        page,
+        isCheckpoint ? "checkpoint" : "still_login"
+      );
+      throw new Error(
+        "No se pudo iniciar sesión: LinkedIn redirige al login o requiere verificación/checkpoint"
+      );
+    }
+
+    // Guardar cookies para próximos runs
+    try {
+      await saveCookies();
+    } catch (e) {}
 
     isInitialized = true;
     console.log("Sesión inicializada correctamente");
@@ -85,15 +206,10 @@ const initializeSession = async () => {
   }
 };
 
-cron.schedule("*/3 * * * *", async () => {
-  try {
-    console.log("Ejecutando tarea programada...");
-    console.log(
-      `Estado de inicialización: ${
-        isInitialized ? "INICIALIZADO" : "NO INICIALIZADO"
-      }`
-    );
+// initializeSession();
 
+cron.schedule("*/1 * * * *", async () => {
+  try {
     if (!isInitialized) {
       console.log("🔄 Reintentando inicialización...");
       const success = await initializeSession();
