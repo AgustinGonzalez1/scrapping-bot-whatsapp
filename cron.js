@@ -56,12 +56,16 @@ const initializeSession = async () => {
     const loginForm = await page.$("#username");
     if (!loginForm) {
       isInitialized = true;
-      console.log("Sesión detectada por cookie. No es necesario iniciar sesión.");
+      console.log(
+        "Sesión detectada por cookie. No es necesario iniciar sesión."
+      );
       return true;
     }
 
     // Si llegamos acá, el formulario de login está presente: proceder a login
-    const inputEmail = await page.waitForSelector("#username", { timeout: 15000 });
+    const inputEmail = await page.waitForSelector("#username", {
+      timeout: 15000,
+    });
     await inputEmail.click({ clickCount: 3 });
     await inputEmail.type(process.env.EMAIL, { delay: 50 });
 
