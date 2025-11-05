@@ -127,7 +127,7 @@ const initializeSession = async () => {
 
 // initializeSession();
 
-cron.schedule("*/1 * * * *", async () => {
+cron.schedule("*/5 * * * *", async () => {
   try {
     if (!isInitialized) {
       console.log("🔄 Reintentando inicialización...");
